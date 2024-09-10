@@ -1,0 +1,15 @@
+h1, h2, h3, h4, h5, h6 {
+    color: darkblue !important;
+}
+
+.slides h1 {
+    font-size : 150%;
+}
+
+.slides h2 {
+    font-size: 140%;
+}
+
+.speaker-notes { 
+    font-size: 4px; 
+} 
