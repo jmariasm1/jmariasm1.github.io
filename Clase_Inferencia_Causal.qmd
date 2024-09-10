@@ -1,0 +1,497 @@
+---
+title: "<span style='color: darkblue;'>Inferencia Causal</span>"
+author: "José Miguel Arias Mejía<br><a href='mailto:jmariasm1@eafit.edu.co' style='font-size: 0.8em;'>jmariasm1@eafit.edu.co</a>"
+institute: "<br>Econometría 2<br>Pregrado de Economía<br>Universidad EAFIT"
+format: 
+  revealjs:
+    footer: "Inferencia causal"
+    logo: logo_eafit.png
+    transition: slide
+    scrollable: true
+    margin: 0.05
+    theme: [default, customs.scss]
+editor: visual
+css: styles.css
+---
+
+## Contenido
+
+1.  Referencias bibliográficas
+
+2.  ¿Qué es causalidad?
+
+3.  Identificando la causalidad
+
+4.  Métodos experimentales
+
+    1.  Ensayos aleatorizados (*Randomized Trials*)
+
+5.  Métodos Observacionales o Cuasi-Experimentales
+
+    1.  Diferencias en Diferencias (*Diff-in-Diff*)
+
+    2.  Diseños de Regresión Discontinua (*RDD*)
+
+6.  Conclusión
+
+## Referencias bibliográficas
+
+-   [Angrist, J. D. & Pischke J. (2015).](https://press.princeton.edu/books/paperback/9780691152844/mastering-metrics?srsltid=AfmBOorIJeiHMtvblAU-KeAFvwhuNjP_d386KH4PxDuivspK8q46qO86) *Mastering 'Metrics: The Path from Cause to Effect*. Princeton Unitversity Press. Capítulos 1, 4 y 5.
+
+-   [Bernal, R. & Peña, X. (2011).](https://economia.uniandes.edu.co/publicaciones/libros/guia-practica-para-la-evaluacion-de-impacto)*Guía práctica para la evaluación de impacto*. Universidad de los Andes. Capítulos 4, 5 y 8.
+
+-   [Dávila, P. & Hanney, O. (2024)](https://voxdev.org/topic/how-are-econometric-methods-applied-researchers-development-economics). *How are econometric methods applied by researchers in development economics?* VoxDev Blog.
+
+-   [Gertler, P. J., Martínez, S., Premand, P., Rawlings, L. B., & Vermeersch, C. M. J. (2017)](https://openknowledge.worldbank.org/server/api/core/bitstreams/6f2eebf7-1a3c-5f67-a9c3-c39f68299ed9/content). *La evaluación de impacto en la práctica*. 2° ed. Banco Mundial. Capítulos 4, 5 y 6.
+
+## ¿Qué es causalidad?
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(plm)
+library(tidyverse)
+```
+
+::: columns
+::: {.column width="40%"}
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.height=5, fig.width=4}
+# Creo dos variables aleatorias, una que es función de la otra
+set.seed(25)
+x <- rnorm(100, mean = 10, sd = 2.5)
+e <- rnorm(100, mean = 0, sd = 2)
+y <- 1 + 0.5*x + e
+
+# Creo un dataframe con mis variables
+df1 <- data.frame(x, y)
+
+# Ejecuto una regresión lineal simple
+reg1 <- lm(data = df1, y ~ x)
+beta0_1 <- coef(reg1)[1]
+beta1_1 <- coef(reg1)[2]
+
+# Grafico mis variables y la línea de regresión
+ggplot(data = df1, mapping = aes(x = x, y = y, group = 1)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_abline(color = "turquoise", lty = 2, lwd = 1.1, slope = beta1_1, intercept = beta0_1) +
+  labs(x = "Años de educación", y = "Ingresos mensuales") +
+  theme_classic()
+```
+:::
+
+::: {.column width="60%"}
+En ocasiones, nuestras variables pueden tener una relación causal ($X$ causa a $Y$), sin embargo, también es posible que tengamos:
+
+-   Correlaciones espurias.
+-   Factores omitidos.
+-   Causalidad inversa.
+-   Sesgos de selección.
+
+Estas situaciones pueden llevar a los *policymakers* a tomar decisiones equivocadas.
+:::
+:::
+
+## *"Correlación no implica causalidad"*
+
+En una correlación espuria, dos variables parecen estar relacionadas entre sí (sus valores cambian juntos, aparentando una relación) pero en realidad no hay una conexión causal entre ellas. La relación aparente es falsa, y puede surgir por casualidad o por una tercera variable omitida.
+
+[![\[Vigen, T. (s.f.)\](https://www.tylervigen.com/spurious/correlation/5920_per-capita-consumption-of-margarine_correlates-with_the-divorce-rate-in-maine)](fig1_correlacion_espuria.png){fig-align="center" width="650"}](https://www.tylervigen.com/spurious/correlation/5920_per-capita-consumption-of-margarine_correlates-with_the-divorce-rate-in-maine)
+
+## Identificando la causalidad
+
+Relación entre presencia policial y tasas de criminalidad en Carolina del Norte, entre 1981 y 1987.
+
+::: columns
+::: column
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Importo la base de datos de crimen
+data(Crime)
+
+# Ejecuto una regresión lineal simple del efecto de presencia policial en el crimen
+reg2a <- lm(data = Crime, lcrmrte ~ lprbarr + lprbconv + lprbpris + lavgsen + ldensity + ltaxpc + lmix + factor(region) + factor(smsa) + lpctmin + lpctymle)
+Crime$rcrmrte <- resid(reg2a)
+reg2 <- lm(data = Crime, rcrmrte ~ lpolpc)
+beta0_2 <- coef(reg2)[1]
+beta1_2 <- coef(reg2)[2]
+
+print(summary(reg2))
+```
+:::
+
+::: column
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.width=4}
+# Grafico mis variables y la línea de regresión
+ggplot(data = Crime, mapping = aes(x = lpolpc, y = rcrmrte, group = 1)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_abline(color = "turquoise", lty = 2, lwd = 1.1, slope = beta1_2, intercept = beta0_2) +
+  labs(x = "Log(Presencia policial)", y = "Log(Tasa de criminalidad)") +
+  theme_classic()
+```
+:::
+:::
+
+## Identificando la causalidad
+
+::: columns
+::: column
+-   ¿Aumentar la presencia policial de verdad causa un incremento en las tasas de criminalidad?
+-   ¿Un aumento en las tasas de criminalidad lleva a mayor presencia policial? *(Causalidad inversa)*
+-   ¿Será que aumentar la presencia policial no sirve para controlar la criminalidad? *(Impacto de la intervención)*
+
+Requerimos algo más que una simple regresión para obtener respuestas a estas preguntas.
+:::
+
+::: column
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.height=5, fig.width=4}
+# Grafico mis variables y la línea de regresión
+ggplot(data = Crime, mapping = aes(x = lpolpc, y = rcrmrte, group = 1)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_abline(color = "turquoise", lty = 2, lwd = 1.1, slope = beta1_2, intercept = beta0_2) +
+  labs(x = "Log(Presencia policial)", y = "Log(Tasa de criminalidad)") +
+  theme_classic()
+```
+:::
+:::
+
+## Identificando la causalidad
+
+Para identificar relaciones de causalidad hay varias herramientas empíricas. La herramienta ideal son los **experimentos**, pero estos no siempre son factibles en las ciencias sociales, por lo que se hace necesario recurrir a los **métodos observacionales** (también llamados cuasi-experimentales).
+
+## Métodos experimentales
+
+Podemos hacer un experimento, en el que de forma controlada manipulamos una de las variables (p.e. la presencia policial) y evaluamos qué ocurre en la otra variable.
+
+Pero esto tiene otras implicaciones:
+
+-   ¿Podemos controlar el experimento, las demás variables y los factores externos?
+-   ¿Sería ético dejar a parte de la población sin presencia policial para obtener este resultado para la ciencia?
+-   ¿Cuál es el costo de hacer este tipo de experimentos? ¿Es fácil coordinarlo y obtener los resultados?
+-   ¿Qué validez tendría el experimento en otros lugares?
+
+## Ensayos aleatorizados *(Randomized Trials)*
+
+Son un método experimental que se caracteriza por la **asignación aleatoria** de la muestra.
+
+**Asignación aleatoria:** se asignan los individuos de la muestra a dos grupos al azar, garantizando que no haya diferencias adicionales entre ambos grupos *(Ley de los grandes números)*, lo que elimina el sesgo de selección:
+
+-   **Grupo de Tratamiento:** aquellos que recibirán la intervención.
+-   **Grupo de Control:** aquellos que no recibirán la intervención.
+
+Se busca el efecto del tratamiento sobre los individuos del primer grupo, asumiendo que en ausencia de esta intervención, tendrían un resultado semejante al del segundo grupo, dado que las características de ambos grupos son las mismas.
+
+Se considera que proporcionan la mejor evidencia en materia de inferencia causal. Pero pueden tener problemas de **validez externa** y dificultades éticas.
+
+## Ensayos aleatorizados *(Randomized Trials)*
+
+Para los $i$ individuos, se tiene una *dummy* $D_i = 1$ en el grupo de tratamiento y $D_i = 0$ en el grupo de control. La variable dependiente es $Y_i$: $Y_{0i}$ en los individuos no tratados, y $Y_{1i}$ en los tratados. Por la asignación aleatoria, sabemos que $E[Y_{0i}|D_i=1]=E[Y_{0i}|D_i=0]$ si no tratamos ningún individuo. Si $Y_{1i}=Y_{0i}+\kappa$, entonces:
+
+$$
+E[Y_i|D_i=1]-E[Y_i|D_i=0]
+$$
+
+$$
+= E[Y_{1i}|D_i=1]-E[Y_{0i}|D_i=0]
+$$
+
+$$
+=E[Y_{0i}+\kappa|D_i=1]-E[Y_{0i}|D_i=0]
+$$
+
+$$
+=\kappa + E[Y_{0i}|D_i=1]-E[Y_{0i}|D_i=0]
+$$
+
+$$
+=\kappa
+$$
+
+## Ensayos aleatorizados *(Randomized Trials)*
+
+En conclusión, el efecto $\kappa$ de la intervención $D_i$ se encuentra mediante la diferencia en el resultado de los individuos tratados frente al resultado de los individuos no tratados.
+
+[![\[Simkus, J. (2024)\](https://www.simplypsychology.org/randomized-controlled-trial.html)](fig2_rct.jpeg){fig-align="center" width="650"}](https://www.simplypsychology.org/randomized-controlled-trial.html)
+
+## Ensayos aleatorizados (*Randomized Trials*)
+
+Un ejemplo es el de [Rogger et al (2023)](https://danrogger.com/files/papers/Rogger%20et%20al_2023_Infrastructure%20and%20the%20Development%20of%20the%20Private%20Sector.pdf), quienes estudiaron el impacto del programa de mejoramiento de infraestructura pública de vivienda "Hábitat" sobre el desarrollo de las empresas privadas locales en 370 barrios seleccionados al azar de 68 ciudades mexicanas, comparando con barrios no elegidos para el programa.
+
+[![\[Rogger et al (2023)\]](fig3_mapa_RCT.png)](https://danrogger.com/files/papers/Rogger%20et%20al_2023_Infrastructure%20and%20the%20Development%20of%20the%20Private%20Sector.pdf)
+
+## Ensayos aleatorizados (*Randomized Trials*)
+
+::: columns
+::: column
+El programa invertía en pavimentación, electrificación, construcción y mantenimiento de amenidades residenciales, centros comunitarios y escenarios deportivos.
+
+En los barrios beneficiados se encontraron efectos al terminar el programa de inversiones e incluso seis años después: crecimiento de los salarios, ingresos y stocks de capital de empresas de servicios.
+:::
+
+::: column
+[![\[Rogger et al (2023)\]](fig4_tabla_reg_RCT.png)](https://danrogger.com/files/papers/Rogger%20et%20al_2023_Infrastructure%20and%20the%20Development%20of%20the%20Private%20Sector.pdf)
+:::
+:::
+
+## Métodos Observacionales o Cuasi-Experimentales
+
+Cuando no es posible realizar un experimento, se debe recurrir a otras alternativas. Algunas de las más populares son:
+
+-   Variables instrumentales (IV).
+-   Diferencias en diferencias (Diff-in-Diff).
+-   Regresiones discontinuas (RDD).
+
+## Diferencias en diferencias *(Diff-in-Diff)*
+
+-   Se parte de dos grupos, un grupo que recibió una intervención, y otro que no la recibió.
+
+-   Se asumen **tendencias paralelas**: el comportamiento de los individuos de ambos grupos, antes del tratamiento, es semejante. También habría sido semejante en caso de no haber recibido el tratamiento.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
+year <- c(1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005)
+et <- rnorm(16, 0, 1)
+group_t <- 0.25*year + 1 + et
+ec <- rnorm(16, 0, 1.25)
+group_c <- 0.25*year + 2.5 + ec
+tto <- c(0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1)
+
+df2 <- data.frame(year, group_t, group_c, tto) |> 
+  mutate(group_t_t = group_t + 5*tto)
+
+ggplot(data = df2, mapping = aes(x = year)) + 
+  geom_line(aes(y = group_t, color = "Grupo 1, sin tratar", linetype = "Grupo 1, sin tratar"), lwd = 1.1) +
+  geom_line(aes(y = group_c, color = "Grupo 2, no tratado", linetype = "Grupo 2, no tratado"), lwd = 1.1) +
+  scale_color_manual(values = c("Grupo 1, sin tratar" = "darkblue", 
+                                "Grupo 2, no tratado" = "turquoise")) +
+  scale_linetype_manual(values = c("Grupo 1, sin tratar" = 6, 
+                                   "Grupo 2, no tratado" = 6)) +
+  labs(x = "Año", y = "Resultado", color = "Grupo", linetype = "Grupo") +
+  ylim(490, 510) +
+  theme_classic()
+```
+
+## Diferencias en diferencias *(Diff-in-Diff)*
+
+-   Se parte de dos grupos, un grupo que recibió una intervención, y otro que no la recibió.
+
+-   Se asumen **tendencias paralelas**: el comportamiento de los individuos de ambos grupos, antes del tratamiento, es semejante. También habría sido semejante en caso de no haber recibido el tratamiento.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
+ggplot(data = df2, mapping = aes(x = year)) + 
+  geom_line(aes(y = group_t, color = "Grupo 1, sin tratar", linetype = "Grupo 1, sin tratar"), lwd = 1.1) +
+  geom_line(aes(y = group_t_t, color = "Grupo 1, tratado", linetype = "Grupo 1, tratado"), lwd = 1.1) +
+  geom_line(aes(y = group_c, color = "Grupo 2, no tratado", linetype = "Grupo 2, no tratado"), lwd = 1.1) +
+  scale_color_manual(values = c("Grupo 1, sin tratar" = "darkblue", 
+                                "Grupo 1, tratado" = "darkblue", 
+                                "Grupo 2, no tratado" = "turquoise")) +
+  scale_linetype_manual(values = c("Grupo 1, sin tratar" = 6, 
+                                   "Grupo 1, tratado" = 1, 
+                                   "Grupo 2, no tratado" = 6)) +
+  labs(x = "Año", y = "Resultado", color = "Grupo", linetype = "Grupo") +
+  geom_vline(xintercept = 1999.5, color = "#123524", lty = 3, lwd = 1.1) +
+  ylim(490, 510) +
+  theme_classic()
+```
+
+## Diferencias en diferencias *(Diff-in-Diff)*
+
+Sea $Y_{i,t}$ la variable a evaluar para el individuo $i$ en el periodo $t$, el estimador de diferencias en diferencias es:
+
+$$
+\delta_{DD}=(Y_{Tratamiento,Post}-Y_{Tratamiento,Pre})-(Y_{Control,Post}-Y_{Control,Pre})
+$$
+
+Es decir, se evalúa el cambio en el resultado para cada uno de los grupos, y luego se encuentra la diferencia entre ambos cambios. Bajo el supuesto de **tendencias paralelas**, esta diferencia se atribuye al hecho de haber recibido el tratamiento.
+
+En una regresión lineal, podemos evaluar el efecto del tratamiento así:
+
+$$
+Y_{i,t}=\alpha + \beta Tratamiento_i + \gamma Post_t + \delta_{DD} (Tratamiento_i \times Post_t) + \epsilon_{i,t}
+$$
+
+Donde $Tratamiento_i$ y $Post_t$ son *dummies* que muestran si el individuo fue tratado ($Tratamiento_i = 1$) o no ($Tratamiento_i = 0$), y si el periodo es después ($Post_t = 1$) o antes ($Post_t = 0$) del tratamiento.
+
+## Diferencias en diferencias *(Diff-in-Diff)* - Ejercicio en R
+
+\*En 1973, el estado de Connecticut redujo la edad mínima para adquirir licor de 21 a 18 años. [Angrist & Pischke (2011)](https://press.princeton.edu/books/paperback/9780691152844/mastering-metrics?srsltid=AfmBOorIJeiHMtvblAU-KeAFvwhuNjP_d386KH4PxDuivspK8q46qO86) analizan este cambio de política.
+
+\*¿Qué efecto tuvo esto en las tasas de mortalidad en accidentes de tránsito de la población de 18 a 20 años?
+
+\*Comparemos estos datos con los de Arkansas, estado que mantuvo en 21 la edad mínima para adquirir licor.
+
+```{r echo=TRUE, warning = FALSE, message = FALSE}
+library(plm) # Librería para panel de datos
+library(tidyverse) # Paquete de librerías para procesamiento y graficación
+Deaths <- read_csv("deaths.csv") # Cargamos base de datos
+
+Deaths <- Deaths |>
+  filter(state %in% c(5,9), # Filtramos los estados 5 (Arkansas) y 9 (Connecticut)
+         agegr == "18-20 yrs", # Filtramos las edades que nos interesan
+         year <= 1983, # Filtramos el periodo de tiempo a evaluar
+         dtype == "MVA") |>  # Filtramos para accidentes de tránsito
+  dplyr::select(year, state, mrate) |> # Seleccionamos las variables que nos interesan
+  mutate(Connecticut = (state == 9), # Creamos nuestra dummy de Estado (Que determina el tratamiento)
+         PostTreatment = (year >= 1973)) # Creamos nuestra dummy de periodo (Que determina el tratamiento)
+```
+
+## Diferencias en diferencias *(Diff-in-Diff)* - Ejercicio en R
+
+```{r echo=TRUE, warning=FALSE, message=FALSE, fig.align = "center"}
+ggplot(data = Deaths, aes(x = year, y = mrate, color = factor(state))) +
+  geom_line(lwd = 1.1) +
+  labs(x = "Año", y = "Tasa de mortalidad en accidentes de tránsito, 18-20 años", color = "Estado") +
+  geom_vline(xintercept = 1972.5, color = "#123524", lty = 3, lwd = 1.1) +
+  scale_color_manual(values = c("5" = "turquoise", "9" = "darkblue"),
+                     labels = c("5" = "Arkansas", "9" = "Connecticut")) +
+  theme_classic()
+```
+
+-   Se presentó una reducción de la mortalidad en accidentes de tránsito tras la venta legal de licor a esta población. ¿Qué más podemos decir al respecto?
+
+## Diferencias en diferencias *(Diff-in-Diff)* - Ejercicio en R
+
+El estimador de *diff-in-diff* nos dice que el efecto de este cambio en la política fue un aumento de la tasa de mortalidad anual de 35 de cada 100.000 habitantes.
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+diff_in_diff <- lm(data = Deaths, mrate ~ Connecticut + PostTreatment + (Connecticut*PostTreatment))
+summary(diff_in_diff)
+```
+
+## Diseños de Regresión Discontinua *(RDD)*
+
+-   Se compara el desempeño de dos poblaciones similares que difieren en el hecho de haber recibido una intervención o no haberla recibido. La comparación se hace en el segmento de la muestra más cercano al punto de corte que determina la intervención o no. Se requiere que la muestra sea claramente separable en dos tramos.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center", fig.height = 3.25}
+x1 <- runif(50, min = 0, max = 10)
+x2 <- runif(50, min = 10, max = 20)
+
+x <- c(x1, x2)
+
+e <- rnorm(100, 0, 5)
+
+y1 <- 100 - 2*x1
+
+y2 <- 50 + 1.5*x2
+
+y <- c(y1, y2)
+y <- y + e
+
+df3 <- data.frame(x, y)
+
+ggplot(data = df3, aes(x = x, y = y)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_vline(xintercept = 10, color = "#123524", lty = 3, lwd = 1.1) +
+  geom_segment(aes(x = 0, y = 100, xend = 10, yend = 80), color = "turquoise", size = 1.1) +
+  geom_segment(aes(x = 10, y = 65, xend = 20, yend = 80), color = "turquoise", size = 1.1) +
+  labs(x = "Variable que clasifica a ambos grupos", y = "Resultado tras intervención") +
+  theme_classic()
+```
+
+## Diseños de Regresión Discontinua *(RDD)*
+
+Supuestos:
+
+-   **No manipulación:** los individuos no pueden moverse de un tramo de la muestra al otro tramo.
+
+-   **Continuidad:** los individuos cercanos al umbral de la intervención, a ambos lados de este, son similares entre si.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center", fig.height = 3.25}
+ggplot(data = df3, aes(x = x, y = y)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_vline(xintercept = 10, color = "#123524", lty = 3, lwd = 1.1) +
+  geom_segment(aes(x = 0, y = 100, xend = 10, yend = 80), color = "turquoise", size = 1.1) +
+  geom_segment(aes(x = 10, y = 65, xend = 20, yend = 80), color = "turquoise", size = 1.1) +
+  labs(x = "Variable que clasifica a ambos grupos", y = "Resultado tras intervención") +
+  theme_classic()
+```
+
+## Diseños de Regresión Discontinua *(RDD)*
+
+Para modelar una regresión discontinua, incluimos el tratamiento $D_i$ como una *dummy* binaria en una regresión lineal en la que también tenemos en cuenta la variable $X_i$ sobre la cual se establece el umbral de corte $c_0$, y otras variables de control.
+
+$$
+D_i = \begin{cases}
+  1 & \text{si }X_i\ge c_0\\    
+  0 & \text{si }X_i<c_0    
+\end{cases}
+$$
+
+$$
+Y_i = \alpha + \beta X_i + \delta D_i + \epsilon_i
+$$
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Con datos ficticios, analizaremos el impacto de un programa de preparación para la admisión a la universidad.
+
+```{r echo=TRUE, warning=FALSE, message=FALSE, fig.align = "center"}
+exams <- read_csv("exams.csv")
+
+ggplot(data = exams, aes(x = initial_test_score, y = university_admission_score)) +
+  geom_point(color = "darkblue", size = 2) +
+  labs(x = "Prueba de selección al programa", y = "Examen de admisión a la universidad") +
+  theme_classic()
+```
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Si ejecutamos una regresión lineal por MCO...
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+reg1 <- lm(data = exams, university_admission_score ~ initial_test_score)
+beta0_1 <- coef(reg1)[1]
+beta1_1 <- coef(reg1)[2]
+summary(reg1)
+```
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Si ejecutamos una regresión lineal por MCO...
+
+```{r echo=TRUE, warning=FALSE, message=FALSE, fig.height = 4, fig.align = "center"}
+ggplot(data = exams, aes(x = initial_test_score, y = university_admission_score)) +
+  geom_point(color = "darkblue", size = 2) +
+  labs(x = "Prueba de selección al programa", y = "Examen de admisión a la universidad") +
+  geom_smooth(method = "lm", formula = y~x, se = TRUE, color = "turquoise", fill = "turquoise", lty = 2) +
+  theme_classic()
+```
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Si ejecutamos una regresión por RDD...
+
+```{r echo=TRUE, warning=FALSE, message=FALSE, fig.height = 3.5, fig.align = "center"}
+ggplot(data = exams, aes(x = initial_test_score, y = university_admission_score)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_vline(xintercept = 3.5, color = "#123524", lty = 3, lwd = 1.1) +
+  geom_smooth(method = "lm", formula = y ~ x, se = TRUE, color = "turquoise", fill = "turquoise", lty = 2, lwd = 1.1, aes(group = factor(passed_initial_test))) +
+  labs(x = "Prueba de selección al programa", y = "Examen de admisión a la universidad") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+```
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Si ejecutamos una regresión por RDD...
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+rdd <- lm(data = exams, university_admission_score ~ initial_test_score + factor(passed_initial_test) + age + factor(gender) + family_income + factor(parental_education))
+
+summary(rdd)
+```
+
+## Diseños de Regresión Discontinua *(RDD)* - Ejercicio en R
+
+Concluimos que, controlando por el puntaje de la prueba inicial y por otras variables, haber sido beneficiario del programa incrementó en 41 puntos el resultado del examen de admisión universitario.
+
+## Conclusión
+
+-   Para la **inferencia causal** se requiere demostrar la relación causal entre dos variables, más halla de una correlación que puede resultar de problemas como:
+
+    -   Correlación espuria
+    -   Sesgo de selección
+    -   Causalidad inversa
+    -   Factores omitidos
+
+-   Ante las dificultades técnicas y éticas de los **métodos experimentales**, se hace uso de **métodos observacionales o cuasi-experimentales** que incluyen:
+
+    -   Variables instrumentales (IV).
+    -   **Diferencias en diferencias (Diff-in-Diff).** Requiere del supuesto de tendencias paralelas.
+    -   **Regresiones discontinuas (RDD).** Requiere de los supuestos de continuidad y no manipulación.
